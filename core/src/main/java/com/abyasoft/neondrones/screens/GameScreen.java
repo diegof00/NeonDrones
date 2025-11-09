@@ -1,6 +1,7 @@
 package com.abyasoft.neondrones.screens;
 
 import com.abyasoft.neondrones.NeonDronesGame;
+import com.abyasoft.neondrones.gameplay.Enemy;
 import com.abyasoft.neondrones.world.WorldConfig;
 import com.abyasoft.neondrones.world.BackgroundScroller;
 import com.abyasoft.neondrones.gameplay.PlayerDrone;
@@ -8,9 +9,12 @@ import com.abyasoft.neondrones.gameplay.BulletManager;
 import com.abyasoft.neondrones.gameplay.Controls;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.abyasoft.neondrones.gameplay.EnemySpawner;
+import com.abyasoft.neondrones.ui.Hud;
 
 public class GameScreen implements Screen {
     private final NeonDronesGame game;
@@ -19,11 +23,16 @@ public class GameScreen implements Screen {
         new FitViewport(WorldConfig.WORLD_W, WorldConfig.WORLD_H, camera);
     private final SpriteBatch batch = new SpriteBatch();
 
+
     // Sistemas/Entidades del prototipo
     private final BackgroundScroller bg = new BackgroundScroller();
     private final PlayerDrone player = new PlayerDrone();
     private final BulletManager bullets = new BulletManager();
     private final Controls input = new Controls();
+
+    private final EnemySpawner spawner = new EnemySpawner();
+    private final Array<Enemy> enemies = new Array<>();
+    private final Hud hud = new Hud();
 
     // Fixed timestep accumulator
     private float acc = 0f;
@@ -51,18 +60,57 @@ public class GameScreen implements Screen {
         ScreenUtils.clear(0.10f, 0.11f, 0.12f, 1f);
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
-        bg.draw(batch, worldW, worldH);        player.draw(batch);             // dron (forma simple)
+        bg.draw(batch, worldW, worldH);
+        player.draw(batch);             // dron (forma simple)
         bullets.draw(batch);            // balas
+        for (int i = 0; i < enemies.size; i++) enemies.get(i).draw(batch);
+        hud.draw(batch, worldW, worldH);
         batch.end();
     }
 
+    // GameScreen.java (en step(dt))
     private void step(float dt) {
-        input.poll();                          // leer teclado
-        bg.update(dt);                         // scroll
-        player.update(dt, input);              // mover dron
-        bullets.update(dt);                    // mover balas
-        player.tryFire(dt, input, bullets);    // disparo rítmico
-        // (colisiones con enemigos vendrán luego)
+        input.poll();
+        bg.update(dt);
+
+        // mundo lógico actual
+        float w = viewport.getWorldWidth();
+        float h = viewport.getWorldHeight();
+
+        // jugador + balas
+        player.update(dt, input);
+        bullets.update(dt);
+        player.tryFire(dt, input, bullets);
+
+        // enemigos
+        spawner.update(dt, enemies, w, h);
+        for (int i = 0; i < enemies.size; i++) enemies.get(i).update(dt);
+
+        // colisiones balas ↔ enemigos
+        int kills = bullets.hitEnemies(enemies);
+        if (kills > 0) hud.addScore(kills * 100); // 100 pts por enemigo
+
+        // colisión jugador ↔ enemigo (opcional: perder vida/reiniciar)
+        for (int i = 0; i < enemies.size; i++) {
+            Enemy e = enemies.get(i);
+            if (com.abyasoft.neondrones.world.CollisionSystem.circleVsCircle(player.pos, 5f, e.pos, e.radius)) {
+                // Por ahora, solo “marcar” y limpiar. Luego: vida/escudo.
+                e.alive = false;
+                // TODO: feedback (flash/screenshake) y sistema de vidas
+            }
+        }
+
+        cullEnemies(enemies, h);
+    }
+
+
+    private void cullEnemies(Array<Enemy> enemies, float worldH) {
+        for (int i = enemies.size - 1; i >= 0; i--) {
+            Enemy e = enemies.get(i);
+            if (!e.alive || e.pos.y < -30f) {
+                enemies.removeIndex(i);
+            }
+        }
     }
 
     @Override public void resize(int w, int h) { viewport.update(w, h, true); }

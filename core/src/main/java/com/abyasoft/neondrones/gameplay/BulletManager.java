@@ -4,8 +4,14 @@ import com.abyasoft.neondrones.world.WorldConfig;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.utils.Array;
+import com.abyasoft.neondrones.world.CollisionSystem;
 
 public class BulletManager {
+
+    private static final float BULLET_RADIUS = 2.5f;
+    private final com.badlogic.gdx.math.Vector2 tmpB = new com.badlogic.gdx.math.Vector2();
+
+
     private static class Bullet {
         float x, y; boolean alive = true;
     }
@@ -36,4 +42,31 @@ public class BulletManager {
             batch.draw(tex, b.x - hw, b.y - hh);
         }
     }
+
+    public int hitEnemies(Array<Enemy> enemies) {
+        int kills = 0;
+        for (int i = pool.size - 1; i >= 0; i--) {
+            Bullet b = pool.get(i);
+            boolean bulletRemoved = false;
+
+            for (int j = enemies.size - 1; j >= 0; j--) {
+                Enemy e = enemies.get(j);
+                if (!e.alive) continue;
+
+                // chequeo círculo vs círculo
+                tmpB.set(b.x, b.y); // usa un Vector2 tmpB en la clase para evitar alloc (defínelo como campo)
+                if (CollisionSystem.circleVsCircle(tmpB, BULLET_RADIUS, e.pos, e.radius)) {
+                    e.alive = false;
+                    pool.removeIndex(i);
+                    bulletRemoved = true;
+                    kills++;
+                    break;
+                }
+            }
+            if (bulletRemoved) continue;
+        }
+        return kills;
+    }
+
+
 }
